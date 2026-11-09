@@ -5,3 +5,5 @@ __pycache__/
 report.json
 sample_report.json
 sample_project/
+atlas_proposal.json
+*.py.bak
