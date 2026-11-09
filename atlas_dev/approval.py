@@ -4,9 +4,12 @@ import argparse
 import difflib
 import hashlib
 import json
+import shutil
+import tempfile
 from pathlib import Path
 
 from .llm import ask_ai
+from .test_runner import run_tests
 
 
 def digest(text):
@@ -80,6 +83,48 @@ def generate(workspace, filename, instruction):
     )))
 
 
+
+def validate_proposal(workspace, filename, proposed):
+    """Test proposed code in a disposable copy before applying it."""
+    root = Path(workspace).resolve(strict=True)
+    source = target_file(root, filename)
+    relative = source.relative_to(root)
+
+    with tempfile.TemporaryDirectory(prefix="atlas-validation-") as tmp:
+        staging = Path(tmp) / "workspace"
+
+        shutil.copytree(
+            root,
+            staging,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".env",
+                ".venv",
+                "__pycache__",
+                "*.pyc",
+                "*.bak",
+                "atlas_proposal.json",
+            ),
+            symlinks=False,
+        )
+
+        staged_file = staging / relative
+        staged_file.write_text(proposed, encoding="utf-8")
+
+        # Allow the restricted Docker user to read the staging tree.
+        Path(tmp).chmod(0o755)
+
+        for item in staging.rglob("*"):
+            if item.is_dir():
+                item.chmod(0o755)
+            elif item.is_file():
+                item.chmod(0o644)
+
+        staging.chmod(0o755)
+
+        return run_tests(staging)
+
+
 def apply():
     proposal_path = Path("atlas_proposal.json")
     proposal = json.loads(proposal_path.read_text())
@@ -99,6 +144,19 @@ def apply():
     if confirmation != "APPLY":
         print("Cancelled. No changes made.")
         return
+
+    print("Validating proposed code in Docker...", flush=True)
+
+    if not validate_proposal(
+        proposal["workspace"],
+        proposal["file"],
+        proposed,
+    ):
+        print("REJECTED: Tests failed. Original file unchanged.")
+        return
+
+    if digest(path.read_text(encoding="utf-8")) != proposal["original_hash"]:
+        raise RuntimeError("Original file changed during validation.")
 
     backup = path.with_suffix(path.suffix + ".bak")
 
