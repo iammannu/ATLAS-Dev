@@ -1,5 +1,5 @@
 import unittest
-from sample_project.example import calculate, Calculator
+from tests.fixtures.example import calculate, Calculator
 
 
 class TestSample(unittest.TestCase):
