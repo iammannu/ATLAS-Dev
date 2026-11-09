@@ -5,7 +5,9 @@ import os
 import re
 
 import streamlit as st
-
+# Make Streamlit Cloud secrets available to the GMI client.
+if "GMI_API_KEY" in st.secrets:
+    os.environ["GMI_API_KEY"] = st.secrets["GMI_API_KEY"]
 from atlas_dev.llm import ask_ai
 
 st.set_page_config(
